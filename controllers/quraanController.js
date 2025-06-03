@@ -7,6 +7,7 @@ const {
   PartInReading,
   SuraInReading,
   Page,
+  Part,
 } = require("../models/quraanModels");
 
 // 🔹 Get reading items
@@ -159,13 +160,39 @@ exports.getReadingByKey = async (req, res) => {
     const reading = await Reading.findOne({ key: req.body.key });
     if (!reading) return res.status(404).send("Reading not found");
 
+    // Get only first 5 pages
     const pages = await Page.find({ readingId: reading._id }).limit(5).lean();
-    const parts = await PartInReading.find({ readingId: reading._id })
-      .populate("partId", "title")
-      .lean();
-    const index = await SuraInReading.find({ readingId: reading._id })
-      .populate("suraId", "title type")
-      .lean();
+
+    // Flattened parts
+    const partLinks = await PartInReading.find({
+      readingId: reading._id,
+    }).lean();
+    const partIds = partLinks.map((p) => p.partId);
+    const partsData = await Part.find({ _id: { $in: partIds } }).lean();
+    const partMap = Object.fromEntries(
+      partsData.map((p) => [p._id.toString(), p])
+    );
+
+    const parts = partLinks.map((p) => ({
+      ...p,
+      title: partMap[p.partId.toString()]?.title,
+    }));
+
+    // Flattened suras
+    const suraLinks = await SuraInReading.find({
+      readingId: reading._id,
+    }).lean();
+    const suraIds = suraLinks.map((s) => s.suraId);
+    const suraData = await Sura.find({ _id: { $in: suraIds } }).lean();
+    const suraMap = Object.fromEntries(
+      suraData.map((s) => [s._id.toString(), s])
+    );
+
+    const index = suraLinks.map((s) => ({
+      ...s,
+      title: suraMap[s.suraId.toString()]?.title,
+      type: suraMap[s.suraId.toString()]?.type,
+    }));
 
     res.send({
       ...reading.toObject(),
@@ -174,6 +201,7 @@ exports.getReadingByKey = async (req, res) => {
       index,
     });
   } catch (err) {
+    console.error("getReadingByKey error:", err);
     res.status(500).send("Server error");
   }
 };
