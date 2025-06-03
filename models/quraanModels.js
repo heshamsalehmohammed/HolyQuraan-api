@@ -9,11 +9,19 @@ const hotspotSchema = new mongoose.Schema({
   w: { type: Number, required: true },
   h: { type: Number, required: true },
   instruction: { type: String },
-  readingTitle: { type: String },
-  surahTitle: { type: String },
-  surahId: { type: Number, required: true },
+
+  surahId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Sura",
+    required: true,
+  },
+  pageId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Page",
+    required: true,
+  },
+
   ayaNumber: { type: Number, required: true },
-  pageNumber: { type: Number, required: true },
 });
 
 const Hotspot = mongoose.model("Hotspot", hotspotSchema);
@@ -27,76 +35,91 @@ const likedHotspotSchema = new mongoose.Schema({
     required: true,
   },
 });
-
 const LikedHotspot = mongoose.model("LikedHotspot", likedHotspotSchema);
 
 // 🔸 Page
 const pageSchema = new mongoose.Schema({
-  pageNumber: { type: Number, required: true, unique: true },
+  readingId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Reading",
+    required: true,
+  },
+  pageNumber: { type: Number, required: true },
   pageURL: { type: String, required: true },
   hotspots: [{ type: mongoose.Schema.Types.ObjectId, ref: "Hotspot" }],
 });
-
+pageSchema.index({ readingId: 1, pageNumber: 1 }, { unique: true });
 const Page = mongoose.model("Page", pageSchema);
 
 // 🔸 Sura
 const suraSchema = new mongoose.Schema({
   title: { type: String, required: true },
-  type: { type: String, required: true }, // مكية / مدنية
+  type: { type: String, required: true },
 });
-
 const Sura = mongoose.model("Sura", suraSchema);
 
-// 🔸 SuraInReading – references Sura only
+// 🔸 SuraInReading (many-to-many)
 const suraInReadingSchema = new mongoose.Schema({
   suraId: { type: mongoose.Schema.Types.ObjectId, ref: "Sura", required: true },
+  readingId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Reading",
+    required: true,
+  },
   pageNumber: { type: Number, required: true },
   souraNumber: { type: Number, required: true },
 });
+const SuraInReading = mongoose.model("SuraInReading", suraInReadingSchema);
 
 // 🔸 Part
 const partSchema = new mongoose.Schema({
   title: { type: String, required: true },
-  pageNumber: { type: Number, required: true },
 });
-
 const Part = mongoose.model("Part", partSchema);
 
-// 🔸 PartInReading – references Part only
+// 🔸 PartInReading (many-to-many)
 const partInReadingSchema = new mongoose.Schema({
   partId: { type: mongoose.Schema.Types.ObjectId, ref: "Part", required: true },
+  readingId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Reading",
+    required: true,
+  },
   pageNumber: { type: Number, required: true },
 });
+const PartInReading = mongoose.model("PartInReading", partInReadingSchema);
 
 // 🔸 Reading
 const readingSchema = new mongoose.Schema({
   name: { type: String },
+  key: { type: String, required: true, unique: true },
   prePagesCount: { type: Number },
   pagesCount: { type: Number, required: true },
-  index: [suraInReadingSchema],
-  pages: [pageSchema],
-  parts: [partInReadingSchema],
 });
-
 const Reading = mongoose.model("Reading", readingSchema);
 
 // 🔸 ReadingItem
 const readingItemSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  readingKey: { type: String, required: true, unique: true },
+  readingId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Reading",
+    required: true,
+  },
   disabled: { type: Boolean, default: false },
   image: { type: String, required: true },
   sideNotes: { type: Boolean, default: false },
 });
-
 const ReadingItem = mongoose.model("ReadingItem", readingItemSchema);
 
+// 🔁 Export all models
 module.exports = {
   Hotspot,
   LikedHotspot,
   Page,
   Sura,
+  SuraInReading,
   Part,
+  PartInReading,
   Reading,
   ReadingItem,
 };
