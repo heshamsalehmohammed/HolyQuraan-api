@@ -1,36 +1,46 @@
-// index.js
-
-const dotenv = require('dotenv');
-const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.env.development';
+const dotenv = require("dotenv");
+const envFile =
+  process.env.NODE_ENV === "production"
+    ? ".env.production"
+    : ".env.development";
 dotenv.config({ path: envFile });
-const winston = require('winston');
-const express = require('express');
-const http = require('http');
-const config = require('config');
+
+const winston = require("winston");
+const express = require("express");
+const http = require("http");
+const config = require("config");
 
 const app = express();
 
-// Apply critical initial configurations and middleware
-require('./startup/logging')();
-require('./startup/config')();
-require('./startup/cors')(app);
-require('./startup/db')();
+async function start() {
+  // Init logging first
+  require("./startup/logging")();
 
-// Load validation and routes
-require('./startup/validation')();
-require('./startup/routes')(app);
+  // Basic config and middleware
+  require("./startup/config")();
+  require("./startup/cors")(app);
 
-// Initialize WebSocket server
-const server = http.createServer(app);
+  // ✅ Await DB connection and handle failures
+  try {
+    await require("./startup/db")();
+  } catch (err) {
+    winston.error("❌ Failed to connect to MongoDB");
+    winston.error(err.stack || err.message);
+    process.exit(1);
+  }
 
-// Add error handling for WebSocket or HTTP errors
-server.on('error', (err) => {
-  winston.error(`Server error: ${err.message}`);
-});
+  // Continue only if DB is connected
+  require("./startup/validation")();
+  require("./startup/routes")(app);
 
-// Start the server
-const port = process.env.PORT || config.get('port');
-server.listen(port, () => winston.info(`Listening on port ${port}...`));
+  const server = http.createServer(app);
 
+  server.on("error", (err) => {
+    winston.error(`Server error: ${err.message}`);
+  });
 
-module.exports = server;
+  const port = process.env.PORT || config.get("port") || 8080;
+  server.listen(port, () => winston.info(`✅ Listening on port ${port}...`));
+}
+
+start();
