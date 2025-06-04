@@ -256,3 +256,42 @@ exports.getReadingPagesByKey = async (req, res) => {
     res.status(500).send("Server error");
   }
 };
+
+
+// 🔹 Like a hotspot
+exports.likeHotspot = async (req, res) => {
+  try {
+    const hotspot = await Hotspot.findById(req.body);
+    if (!hotspot) return res.status(404).send("Hotspot not found");
+
+    const alreadyLiked = await LikedHotspot.findOne({
+      userId: req.user._id,
+      hotspotId: hotspot._id,
+    });
+    if (alreadyLiked) return res.status(400).send("Already liked");
+
+    const newLike = new LikedHotspot({
+      userId: req.user._id,
+      hotspotId: hotspot._id,
+    });
+
+    await newLike.save();
+    res.send(newLike);
+  } catch (err) {
+    res.status(500).send("Server error");
+  }
+};
+
+// 🔹 Dislike a hotspot
+exports.dislikeHotspot = async (req, res) => {
+  try {
+    const removed = await LikedHotspot.findOneAndDelete({
+      _id: req.body.id,
+      userId: req.user._id,
+    });
+    if (!removed) return res.status(404).send("Not found or not authorized");
+    res.send(removed);
+  } catch (err) {
+    res.status(500).send("Server error");
+  }
+};
