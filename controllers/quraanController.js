@@ -9,6 +9,7 @@ const {
   Page,
   Part,
 } = require("../models/quraanModels");
+const { applyTransform } = require("../utils/mongooseHelpers");
 
 // 🔹 Get reading items
 exports.getReadingItems = async (req, res) => {
@@ -160,17 +161,22 @@ exports.getReadingByKey = async (req, res) => {
     const reading = await Reading.findOne({ key: req.body.key });
     if (!reading) return res.status(404).send("Reading not found");
 
-    // Get only first 5 pages
-    const pages = await Page.find({ readingId: reading._id }).limit(5).lean();
+    // Get only first 5 pages and clean them
+    const rawPages = await Page.find({ readingId: reading._id })
+      .limit(5)
+      .lean();
+    const pages = rawPages.map(applyTransform);
 
     // Flattened parts
-    const partLinks = await PartInReading.find({
+    const rawPartLinks = await PartInReading.find({
       readingId: reading._id,
     }).lean();
+    const partLinks = rawPartLinks.map(applyTransform);
+
     const partIds = partLinks.map((p) => p.partId);
     const partsData = await Part.find({ _id: { $in: partIds } }).lean();
     const partMap = Object.fromEntries(
-      partsData.map((p) => [p._id.toString(), p])
+      partsData.map((p) => [p._id.toString(), applyTransform(p)])
     );
 
     const parts = partLinks.map((p) => ({
@@ -179,13 +185,15 @@ exports.getReadingByKey = async (req, res) => {
     }));
 
     // Flattened suras
-    const suraLinks = await SuraInReading.find({
+    const rawSuraLinks = await SuraInReading.find({
       readingId: reading._id,
     }).lean();
+    const suraLinks = rawSuraLinks.map(applyTransform);
+
     const suraIds = suraLinks.map((s) => s.suraId);
     const suraData = await Sura.find({ _id: { $in: suraIds } }).lean();
     const suraMap = Object.fromEntries(
-      suraData.map((s) => [s._id.toString(), s])
+      suraData.map((s) => [s._id.toString(), applyTransform(s)])
     );
 
     const index = suraLinks.map((s) => ({
@@ -195,7 +203,7 @@ exports.getReadingByKey = async (req, res) => {
     }));
 
     res.send({
-      ...reading.toObject(),
+      ...reading.toObject(), // already transformed by schema
       pages,
       parts,
       index,

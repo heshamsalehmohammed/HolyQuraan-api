@@ -30,8 +30,7 @@ server.on('error', (err) => {
 
 // Start the server
 const port = process.env.PORT || config.get('port');
-server.listen(port, "0.0.0.0", () =>
-  winston.info(`Listening on port ${port} and accessible on LAN...`)
-);
+server.listen(port, () => winston.info(`Listening on port ${port}...`));
+
 
 module.exports = server;
