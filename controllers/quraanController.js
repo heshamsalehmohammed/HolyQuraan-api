@@ -9,7 +9,9 @@ const {
   Page,
   Part,
 } = require("../models/quraanModels");
+
 const { applyTransform } = require("../utils/mongooseHelpers");
+const { generateSignedUrl } = require("../utils/s3SignedUrl");
 
 // 🔹 Get reading items
 exports.getReadingItems = async (req, res) => {
@@ -50,8 +52,8 @@ exports.getLikedHotspots = async (req, res) => {
         id: entry._id,
         hotspotId: h._id,
         userId: req.user._id,
-        wordURL: h.wordURL,
-        audio: h.audio,
+        wordURL: generateSignedUrl(h.wordURL),
+        audio: generateSignedUrl(h.audio),
         instruction: h.instruction,
         ayaNumber: h.ayaNumber,
         pageId: h.pageId?._id,
@@ -96,8 +98,8 @@ exports.getLastNLikedHotspots = async (req, res) => {
         id: entry._id,
         hotspotId: h._id,
         userId: req.user._id,
-        wordURL: h.wordURL,
-        audio: h.audio,
+        wordURL: generateSignedUrl(h.wordURL),
+        audio: generateSignedUrl(h.audio),
         instruction: h.instruction,
         ayaNumber: h.ayaNumber,
         pageId: h.pageId?._id,
@@ -117,57 +119,47 @@ exports.getLastNLikedHotspots = async (req, res) => {
   }
 };
 
-// 🔹 Like a hotspot
-exports.likeHotspot = async (req, res) => {
-  try {
-    const hotspot = await Hotspot.findById(req.body);
-    if (!hotspot) return res.status(404).send("Hotspot not found");
-
-    const alreadyLiked = await LikedHotspot.findOne({
-      userId: req.user._id,
-      hotspotId: hotspot._id,
-    });
-    if (alreadyLiked) return res.status(400).send("Already liked");
-
-    const newLike = new LikedHotspot({
-      userId: req.user._id,
-      hotspotId: hotspot._id,
-    });
-
-    await newLike.save();
-    res.send(newLike);
-  } catch (err) {
-    res.status(500).send("Server error");
-  }
-};
-
-// 🔹 Dislike a hotspot
-exports.dislikeHotspot = async (req, res) => {
-  try {
-    const removed = await LikedHotspot.findOneAndDelete({
-      _id: req.body.id,
-      userId: req.user._id,
-    });
-    if (!removed) return res.status(404).send("Not found or not authorized");
-    res.send(removed);
-  } catch (err) {
-    res.status(500).send("Server error");
-  }
-};
-
-// 🔹 Get reading by key
+// 🔹 Get reading by key (with pages + hotspots + signed URLs)
 exports.getReadingByKey = async (req, res) => {
   try {
     const reading = await Reading.findOne({ key: req.body.key });
     if (!reading) return res.status(404).send("Reading not found");
 
-    // Get only first 5 pages and clean them
     const rawPages = await Page.find({ readingId: reading._id })
       .limit(5)
+      .populate({
+        path: "hotspots",
+        populate: [
+          { path: "suraId", select: "title" },
+          {
+            path: "pageId",
+            populate: { path: "readingId", select: "name" },
+            select: "pageNumber readingId",
+          },
+        ],
+      })
       .lean();
-    const pages = rawPages.map(applyTransform);
 
-    // Flattened parts
+    const pages = rawPages.map((page) => ({
+      ...applyTransform(page),
+      pageURL: generateSignedUrl(page.pageURL),
+      hotspots: page.hotspots.map((h) => ({
+        id: h._id,
+        wordURL: generateSignedUrl(h.wordURL),
+        audio: generateSignedUrl(h.audio),
+        x: h.x,
+        y: h.y,
+        w: h.w,
+        h: h.h,
+        instruction: h.instruction,
+        readingTitle: h.pageId?.readingId?.name || "",
+        surahTitle: h.suraId?.title || "",
+        surahId: h.suraId?._id,
+        ayaNumber: h.ayaNumber,
+        pageNumber: h.pageId?.pageNumber,
+      })),
+    }));
+
     const rawPartLinks = await PartInReading.find({
       readingId: reading._id,
     }).lean();
@@ -184,7 +176,6 @@ exports.getReadingByKey = async (req, res) => {
       title: partMap[p.partId.toString()]?.title,
     }));
 
-    // Flattened suras
     const rawSuraLinks = await SuraInReading.find({
       readingId: reading._id,
     }).lean();
@@ -203,7 +194,7 @@ exports.getReadingByKey = async (req, res) => {
     }));
 
     res.send({
-      ...reading.toObject(), // already transformed by schema
+      ...reading.toObject(),
       pages,
       parts,
       index,
@@ -240,10 +231,11 @@ exports.getReadingPagesByKey = async (req, res) => {
     for (const page of pages) {
       result[page.pageNumber] = {
         ...page.toObject(),
+        pageURL: generateSignedUrl(page.pageURL),
         hotspots: page.hotspots.map((h) => ({
           id: h._id,
-          wordURL: h.wordURL,
-          audio: h.audio,
+          wordURL: generateSignedUrl(h.wordURL),
+          audio: generateSignedUrl(h.audio),
           x: h.x,
           y: h.y,
           w: h.w,
