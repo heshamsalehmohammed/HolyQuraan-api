@@ -224,13 +224,43 @@ exports.getReadingPagesByKey = async (req, res) => {
     const pages = await Page.find({
       readingId: reading._id,
       pageNumber: { $in: pagesNumber },
-    }).lean();
+    }).populate({
+      path: "hotspots",
+      populate: [
+        { path: "suraId", select: "title" },
+        {
+          path: "pageId",
+          populate: { path: "readingId", select: "name" },
+          select: "pageNumber readingId",
+        },
+      ],
+    });
 
     const result = {};
-    for (const p of pages) result[p.pageNumber] = p;
+    for (const page of pages) {
+      result[page.pageNumber] = {
+        ...page.toObject(),
+        hotspots: page.hotspots.map((h) => ({
+          id: h._id,
+          wordURL: h.wordURL,
+          audio: h.audio,
+          x: h.x,
+          y: h.y,
+          w: h.w,
+          h: h.h,
+          instruction: h.instruction,
+          readingTitle: h.pageId?.readingId?.name || "",
+          surahTitle: h.suraId?.title || "",
+          surahId: h.suraId?._id,
+          ayaNumber: h.ayaNumber,
+          pageNumber: h.pageId?.pageNumber,
+        })),
+      };
+    }
 
     res.send(result);
   } catch (err) {
+    console.error("getReadingPagesByKey error:", err);
     res.status(500).send("Server error");
   }
 };
